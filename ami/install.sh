@@ -10,7 +10,7 @@
 #
 # 담는 것 : nginx, php8.4-fpm/cli/opcache, supervisor, cron, AWS CLI v2, CodeDeploy 에이전트(2.0.x 이상),
 #           nginx/php/supervisor/cron 설정, /var/www 디렉터리 구조.
-# 담지 않는 것 : 앱 코드, .env  (코드는 CodeDeploy, 설정은 SSM -> after_install.sh 가 담당)
+# 담지 않는 것 : 앱 코드, .env  (코드는 CodeDeploy, .env 는 after_install.sh 가 생성)
 #
 # 역할(Web/Queue/Scheduler)은 여기서 정하지 않는다. 인스턴스가 속한 CodeDeploy 배포 그룹이 정한다.
 #   - supervisor 워커 설정은 autostart=false 로 깔려 있어 Web 에서는 돌지 않고, lc-queue 배포(start.sh)가 켠다.
