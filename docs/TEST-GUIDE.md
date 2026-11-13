@@ -15,7 +15,7 @@ while true; do printf '%s ' "$(date +%T)"; curl -s -o /dev/null -w '%{http_code}
 | T4 | 이전 리비전 stop 고장 | `scripts/README.md` 의 "T4 재현 순서" | 일반 배포·롤백 실패 → `--ignore-application-stop-failures` 로 복구 | ApplicationStop 이벤트 |
 | T5 | desired 0→1 | ASG desired 1 (수동 모드) | launch deployment 성공, healthy 이후에만 트래픽 | ASG 활동, 배포 목록, TG |
 | T6 | 2대 롤링 중 연속 요청 | desired 2 상태에서 연속 요청 루프를 켜고 배포 | 5xx 0건, 정상 대상 최소 1 | 루프 출력 |
-| T7 | 첫 인스턴스 실패 / 마지막만 실패 | `fault_target=instance:<첫 id>` / 마지막 id (또는 `ssm`) | 첫 실패는 Failed+롤백. 마지막만 실패하면 OneAtATime 에서 전체 Succeeded 로 표시되는지 확인 | 배포 상세 > 대상별 상태 |
+| T7 | 첫 인스턴스 실패 / 마지막만 실패 | `fault=validate_fail`, `fault_target=instance:<첫 id>` / 마지막 id. 처리 순서를 미리 모르면 `fault_target=ssm` (훅 실패에만 적용, CONSOLE-GUIDE 3-1 선택 항목 필요) | 첫 실패는 Failed+롤백. 마지막만 실패하면 OneAtATime 에서 전체 Succeeded 로 표시되는지 확인 | 배포 상세 > 대상별 상태 |
 | T8 | 인스턴스 종료 | `aws autoscaling terminate-instance-in-auto-scaling-group --instance-id <id> --no-should-decrement-desired-capacity` | 교체 + launch deployment 성공, 소요 시간. (수동 모드에서 `Terminate` 를 꺼 뒀다면 동작이 문서에 없으므로 실제로 확인, 필요하면 `Terminate` 만 재개) | ASG 활동 |
 | T9 | 배포 중 desired+1 | 배포 진행 중에 desired 증가 | 새 인스턴스가 후속 배포로 최신화(UPDATE) | 배포 목록 |
 | T10 | 스케일 인 | desired 감소 | 진행 중 요청이 정상 종료(등록 취소 지연 동안 draining) | 연속 요청 루프, TG draining |

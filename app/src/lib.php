@@ -58,12 +58,6 @@ function lc_deploy_info(): array
     ];
 }
 
-/** .env(shared/.env 링크)의 비밀 아닌 값만 읽을 때 사용. */
-function lc_env(): array
-{
-    return lc_kv(lc_root() . '/.env');
-}
-
 /** SHA 앞 6자리 -> 색조. 릴리스가 바뀌면 배경색이 바뀐다. */
 function lc_color(string $sha): string
 {
@@ -123,7 +117,8 @@ function lc_imds(): array
  * 고장 스위치. 번들의 FAULT 파일 값 + 서버 플래그 파일.
  * 반환: ['fault' => 스위치, 'target' => 대상, 'applies' => 이 인스턴스에 적용되는가]
  * 대상 문법은 scripts/lib.sh 의 fault_applies 와 같다:
- *   all | instance:i-aaa,i-bbb | az:ap-northeast-2c | ssm(= .env 의 FAULT_INSTANCE_IDS)
+ *   all | instance:i-aaa,i-bbb | az:ap-northeast-2c
+ *   ssm 은 훅(scripts/lib.sh)만 SSM 파라미터로 판단한다. 앱 화면/ up500 은 ssm 대상을 판단하지 않는다(applies=false).
  */
 function lc_fault(): array
 {
@@ -138,9 +133,6 @@ function lc_fault(): array
             $applies = in_array(lc_imds()['instance_id'], explode(',', substr($target, 9)), true);
         } elseif (strncmp($target, 'az:', 3) === 0) {
             $applies = lc_imds()['az'] === substr($target, 3);
-        } elseif ($target === 'ssm') {
-            $ids = explode(',', lc_env()['FAULT_INSTANCE_IDS'] ?? '');
-            $applies = in_array(lc_imds()['instance_id'], $ids, true);
         }
     }
     return ['fault' => $fault, 'target' => $target, 'applies' => $applies];

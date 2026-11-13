@@ -15,7 +15,7 @@
 
 | 항목 | 값 |
 |---|---|
-| 이름 / 태그 | `Name=lcamtest-web`, `Project=lcamtest`, `Owner=sungho`, `Ephemeral=true` |
+| 이름 / 태그 | `Name=lcamtest-web`, `lc-deploy=web-standalone`, `Project=lcamtest`, `Owner=sungho`, `Ephemeral=true` |
 | AMI | Ubuntu Server 24.04 LTS (Canonical 공식, 시작 시점의 최신) |
 | 인스턴스 유형 | t3.small (또는 t4g.small, 이 경우 arm64) |
 | 키 페어 | 없음 (SSH 안 씀) |
@@ -41,7 +41,7 @@ ls /var/www                                         # _incoming  releases  share
 
 ### 3. 첫 배포 (CodeDeploy)
 
-이 인스턴스를 태그 기반 배포 그룹(`lc-web`, 태그 `Name=lcamtest-web`)에 넣고 GitHub Actions 로 배포한다. `Succeeded` 를 확인하고 인스턴스에서:
+이 인스턴스를 태그 기반 배포 그룹(`lc-web`, 태그 `lc-deploy=web-standalone`)에 넣고 GitHub Actions 로 배포한다. `Succeeded` 를 확인하고 인스턴스에서:
 
 ```bash
 curl -s localhost/version

@@ -9,7 +9,8 @@
 #   CD_GROUP_WEB      lc-web
 #   CD_GROUP_QUEUE    lc-queue
 #   CD_GROUP_SCHEDULER lc-scheduler
-# 장기 액세스 키는 쓰지 않는다 (secrets 에 AWS 키 없음). 역할의 신뢰 정책은 sub=repo:hohosungho/lc-cicd-test:ref:refs/heads/main.
+# 장기 액세스 키는 쓰지 않는다 (secrets 에 AWS 키 없음). 역할의 신뢰 정책은 sub=ref:refs/heads/main 으로 끝나는 값. 저장소 생성 시점에 따라 repo:hohosungho/lc-cicd-test:... 또는
+#   repo:hohosungho@<ID>/lc-cicd-test@<ID>:... (immutable subject) 형식이므로 docs/CONSOLE-GUIDE.md 3-3 처럼 둘 다 허용한다.
 # 주의: job 에 `environment:` 를 붙이면 OIDC sub 가 repo:...:environment:<이름> 으로 바뀌어 위 신뢰 정책과 어긋난다.
 #       그래서 environment 를 쓰지 않는다 (쓰려면 역할 신뢰 정책의 sub 도 같이 바꿔야 한다).
 #

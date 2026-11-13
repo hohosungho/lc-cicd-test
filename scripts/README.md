@@ -11,7 +11,7 @@
 | 3 | DownloadBundle | 에이전트 | S3 zip 다운로드·압축 해제 |
 | 4 | BeforeInstall | `before_install.sh` | 역할 검증, `/var/www/_incoming` 비우기 |
 | 5 | Install | 에이전트 | zip 루트 전체를 `/var/www/_incoming` 으로 복사 |
-| 6 | AfterInstall | `after_install.sh` | SSM → `shared/.env`, `_incoming` → `releases/<DEPLOYMENT_ID>`, shared 링크, **current 교체**, 오래된 릴리스 정리 |
+| 6 | AfterInstall | `after_install.sh` | 고정 내용의 `shared/.env` 생성, `_incoming` → `releases/<DEPLOYMENT_ID>`, shared 링크, **current 교체**, 오래된 릴리스 정리 |
 | 7 | ApplicationStart | `start.sh` | php-fpm reload. queue: 워커 재시작. scheduler: cron 유지 |
 | 8 | ValidateService | `validate.sh` | `/up` 200 재시도 + `/version` 의 SHA == REVISION SHA |
 | 9 | BeforeAllowTraffic / AllowTraffic / AfterAllowTraffic (lc-web 만) | CodeDeploy | TG 재등록, healthy 가 될 때까지 대기(최대 1시간) |
@@ -21,7 +21,7 @@
 ```
 /var/www/_incoming/          에이전트가 설치하는 스테이징 (배포마다 비움)
 /var/www/releases/<id>/      릴리스 (id = DEPLOYMENT_ID, 최근 5개 보관)
-/var/www/shared/.env         SSM 에서 만든 설정 (640 root:www-data)
+/var/www/shared/.env         고정 내용의 설정 파일 (640 root:www-data)
 /var/www/shared/storage/     로그 등 (heartbeat.log, worker.log)
 /var/www/current -> releases/<id>   nginx root = current/public
 ```
@@ -54,7 +54,7 @@ FAULT_TARGET=all
 | `all` | 모든 대상 인스턴스 (기본) |
 | `instance:i-aaa,i-bbb` | 나열한 instance-id 에서만 |
 | `az:ap-northeast-2c` | 그 AZ 의 인스턴스에서만 |
-| `ssm` | SSM 파라미터 `/lcamtest/prd/FAULT_INSTANCE_IDS` (쉼표 구분 instance-id)에 있는 인스턴스에서만 |
+| `ssm` | SSM 파라미터 `/lcamtest/prd/FAULT_INSTANCE_IDS` (쉼표 구분 instance-id)에 있는 인스턴스에서만. **훅 실패에만 적용**(앱 화면의 FAULT 배너와 `up500` 은 ssm 대상을 판단하지 않는다) |
 
 T7 "마지막 인스턴스만 실패" 방법:
 1. 먼저 정상 배포로 두 대가 같은 리비전인지 확인한다.

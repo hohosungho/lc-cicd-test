@@ -2,7 +2,7 @@
 
 리전 `ap-northeast-2`, 이름 접두사 `lc`. 모든 리소스에 태그 `Project=lcamtest`, `Owner=sungho`, `Ephemeral=true`.
 `<ACCOUNT_ID>` = 본인 샌드박스 계정 ID, `<MY_IP>` = 본인 공인 IP. 이 문서는 공개 저장소에 올라가므로 실제 값은 콘솔에만 입력한다.
-`.env` 는 이번 데모에서 SSM 을 쓰지 않는다(AfterInstall 이 고정 내용으로 만든다). 그래서 SSM 파라미터 작업은 없다.
+`.env` 는 이번 데모에서 SSM 을 쓰지 않는다(AfterInstall 이 고정 내용으로 만든다). 그래서 기본 구성에서는 SSM 파라미터 작업이 없다(T7 의 `ssm` 고장 대상 모드를 쓸 때만 3-1 의 선택 항목).
 
 만드는 순서: **1 네트워크 → 2 S3 → 3 IAM → 4 SG → 5 단독 Web+AMI → 6 ALB/TG → 7 CodeDeploy → 8 GitHub → 9 첫 배포 → 10 AMI → 11 ASG**
 
@@ -42,6 +42,9 @@
   ]
 }
 ```
+- (선택, T7 의 `fault_target=ssm` 을 쓸 때만) 위 Statement 에 추가:
+  `{ "Effect": "Allow", "Action": "ssm:GetParameter", "Resource": "arn:aws:ssm:ap-northeast-2:<ACCOUNT_ID>:parameter/lcamtest/prd/FAULT_INSTANCE_IDS" }`
+  그리고 SSM 파라미터 `/lcamtest/prd/FAULT_INSTANCE_IDS` (String, 쉼표 구분 instance-id) 를 만든다. 쓰지 않으면 이 항목은 불필요.
 - `codedeploy:*` 는 넣지 않는다(에이전트는 서비스 쪽 폴링에 인스턴스 역할 권한이 필요 없다).
 
 ### 3-2. CodeDeploy 서비스 역할 `lc-codedeploy-role`
@@ -49,9 +52,14 @@
 
 ### 3-3. GitHub OIDC
 - IAM > ID 공급자 > 추가: OpenID Connect, URL `https://token.actions.githubusercontent.com`, 대상 `sts.amazonaws.com`.
-- 역할 `lc-github-oidc-role`: 웹 ID, 위 공급자, 대상 `sts.amazonaws.com`. 신뢰 정책의 `sub` 조건:
-  `StringLike  token.actions.githubusercontent.com:sub = repo:hohosungho/lc-cicd-test:*`
-  (데모라 느슨하게 시작. 워크플로는 `environment:` 를 쓰지 않으므로 실제 sub 는 `…:ref:refs/heads/main` 형태. **AssumeRole 이 거부되면 GitHub Actions 로그의 에러에 나온 sub 값을 그대로 조건에 넣는다**. 저장소 설정에 따라 sub 형식이 달라질 수 있다.)
+- 역할 `lc-github-oidc-role`: 웹 ID, 위 공급자, 대상 `sts.amazonaws.com`. 신뢰 정책에서 `aud` 는 `StringEquals`, `sub` 는 **`StringLike` 로 두 형식을 모두 허용**:
+```json
+"StringLike": { "token.actions.githubusercontent.com:sub": [
+  "repo:hohosungho/lc-cicd-test:ref:refs/heads/main",
+  "repo:hohosungho@*/lc-cicd-test@*:ref:refs/heads/main" ] }
+```
+  이유: GitHub 는 2026-07-15 이후 만든(또는 이름 변경·이전한) 저장소에 `repo:OWNER@OWNER-ID/REPO@REPO-ID:ref:refs/heads/BRANCH` 형식(immutable subject)을 쓴다. 이전 형식은 `repo:OWNER/REPO:ref:refs/heads/BRANCH`. 이 저장소가 어느 쪽인지 몰라도 되도록 둘 다 적었다. 출처: https://docs.github.com/en/actions/reference/security/oidc (Immutable subject claims).
+  워크플로는 `environment:` 를 쓰지 않으므로 sub 는 위처럼 `ref:refs/heads/main` 으로 끝난다. 그래도 AssumeRole 이 거부되면 Actions 로그/CloudTrail 에 찍힌 sub 값을 그대로 조건에 넣는다.
 - 인라인 정책 `lc-github-deploy`:
 ```json
 {
