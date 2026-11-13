@@ -1,0 +1,7 @@
+.agents/
+vendor/
+node_modules/
+.env
+*.zip
+*.pem
+.DS_Store
