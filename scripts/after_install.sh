@@ -6,7 +6,7 @@
 # 실행하는 스크립트: "이번 배포 번들"의 scripts/after_install.sh (이미 _incoming 에도 같은 파일이 있음).
 #
 # 순서(요구사항 §5-1):
-#   1) SSM Parameter Store(/lcamtest/prd/*) -> shared/.env 생성 (권한 640)
+#   1) shared/.env 생성 (데모: 고정 내용, SSM 미사용. 권한 640)
 #   2) _incoming -> releases/$DEPLOYMENT_ID 로 이동, shared/.env · shared/storage 링크
 #   3) .env 가 "생긴 뒤에" (Laravel 이면) config:cache / route:cache / view:cache
 #   4) current 심볼릭 링크 교체 (ln -sfn)  <- 이 순간에 새 버전이 서비스 대상이 된다
@@ -29,29 +29,16 @@ DEPLOY_ID="${DEPLOYMENT_ID:?DEPLOYMENT_ID 환경변수 없음}"
 RELEASE="$RELEASES/$DEPLOY_ID"
 log "AfterInstall 시작 role=$ROLE release=$RELEASE sha=$(release_sha)"
 
-# --- 1) .env 생성 ------------------------------------------------------------
-# 값(비밀 포함)은 변수/파이프로만 흐르고 어디에도 출력하지 않는다. 키 이름만 로그에 남긴다.
-# 파라미터 이름의 마지막 구간이 키가 된다: /lcamtest/prd/APP_KEY -> APP_KEY
-# (하위 경로가 있어도 마지막 구간만 쓰므로 같은 이름이 있으면 충돌한다. 데모에서는 평평하게 만든다.)
-build_env() ( # 서브셸: umask 077 이 스크립트 나머지에 번지지 않게 한다
+# --- 1) .env 생성 (데모 단순화: SSM Parameter Store 는 쓰지 않는다) -----------------
+# 비밀값이 없는 고정 내용만 쓴다. 실제 운영에서는 SSM get-parameters-by-path --with-decryption 으로 만든다.
+build_env() (
   umask 077
   tmp="$(mktemp "$SHARED/.env.XXXXXX")"
-  if ! aws ssm get-parameters-by-path --path "$SSM_PATH" --recursive --with-decryption --output json |
-    jq -r '.Parameters[]
-           | (.Name | split("/") | last) as $k
-           | select($k | test("^[A-Za-z_][A-Za-z0-9_]*$"))
-           | "\($k)=\(.Value | @json)"' >"$tmp"; then
-    rm -f "$tmp"
-    die "SSM get-parameters-by-path 실패 (인스턴스 역할의 ssm:GetParametersByPath / kms:Decrypt 권한, 경로 $SSM_PATH 확인)"
-  fi
-  if [ ! -s "$tmp" ]; then
-    rm -f "$tmp"
-    die "SSM $SSM_PATH 아래 파라미터가 없다 -> .env 를 만들 수 없음 (APP_NAME, APP_ENV, APP_KEY 를 SecureString 으로 만들어 두세요)"
-  fi
+  printf 'APP_NAME=lcamtest\nAPP_ENV=prd\n' >"$tmp"
   chown root:www-data "$tmp"
   chmod 640 "$tmp"
-  mv -f "$tmp" "$SHARED/.env" # 같은 파일시스템 rename = 원자적. 읽는 쪽이 반쪽짜리 .env 를 보지 않는다.
-  log ".env 생성 완료 (키 $(wc -l <"$SHARED/.env")개, 권한 $(stat -c '%a %U:%G' "$SHARED/.env"), 값은 출력하지 않음)"
+  mv -f "$tmp" "$SHARED/.env"
+  log ".env 생성 완료 (고정 내용, 권한 $(stat -c '%a %U:%G' "$SHARED/.env"))"
 )
 mkdir -p "$SHARED/storage/logs"
 build_env

@@ -95,16 +95,8 @@ curl -s localhost/version
 
 주의: 이 롤백은 그 서버 한 대에만 적용된다. 이후 ASG 가 새 인스턴스를 띄우면 CodeDeploy 가 기억하는 **마지막 성공 리비전**이 올라온다 (수동으로 되돌린 버전이 아님). `after_install.sh` 가 `current` 교체 때 위 명령을 로그에 찍어 준다.
 
-## SSM 파라미터 (after_install.sh 가 읽음)
-
-경로 `/lcamtest/prd/` 아래 파라미터가 `shared/.env` 의 `KEY=값` 이 된다 (이름의 마지막 구간이 키). 최소 구성은 SecureString 3개이다. 파라미터가 하나도 없으면 AfterInstall 이 실패한다.
-
-| 이름 | 예시 값 |
-|---|---|
-| `/lcamtest/prd/APP_NAME` | `lcamtest` |
-| `/lcamtest/prd/APP_ENV` | `production` |
-| `/lcamtest/prd/APP_KEY` | 임의 문자열 (더미) |
-
+## .env
+데모에서는 SSM 을 쓰지 않는다. `after_install.sh` 가 고정 내용(`APP_NAME`, `APP_ENV`)으로 `shared/.env` 를 만든다. (`fault_target=ssm` 을 쓸 때만 SSM 파라미터와 `ssm:GetParameter` 권한이 필요하다.)
 ## 로그 위치
 
 | 무엇 | 어디 |
@@ -120,4 +112,3 @@ curl -s localhost/version
 
 - Queue 인스턴스를 재부팅하면 워커는 다음 배포 때까지 안 뜬다 (`autostart=false`, 같은 AMI 를 Web 과 공유하기 위함).
 - `stopwaitsecs=90` (supervisor) < `stop.sh` timeout 120초 (appspec). 워커 작업 시간(기본 20초)을 늘리면 이 관계를 같이 조정한다.
-- 파라미터 이름의 마지막 구간만 키로 쓰므로 하위 경로에 같은 이름이 있으면 충돌한다.
