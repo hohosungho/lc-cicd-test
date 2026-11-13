@@ -6,3 +6,6 @@ node_modules/
 *.pem
 .DS_Store
 build/
+
+# CLI 가이드 중간 변수 저장 파일
+.lc-vars

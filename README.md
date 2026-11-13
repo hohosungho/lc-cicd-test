@@ -4,6 +4,7 @@ GitHub Actions + CodeDeploy(in-place) + ALB + ASG 구성에서 배포가 어떻�
 | 읽을 것 | 내용 |
 |---|---|
 | `docs/CONSOLE-GUIDE.md` | 콘솔 기준 구성 순서와 값 (여기서 시작) |
+| `docs/CLI-GUIDE.md` | 같은 구성을 AWS CLI 로 만들고, 앱 수정 → GitHub Actions 배포 → 시험·정리까지 명령 모음 |
 | `docs/TEST-GUIDE.md`, `docs/RESULTS.md` | 시험 절차(T1~T17)와 결과 기록 표 |
 | `docs/TEARDOWN.md` | 정리 순서와 비용 |
 | `docs/PROPOSAL.md` | 초기 설계 메모 (배경 참고용. 구축 절차는 CONSOLE-GUIDE 가 우선) |
