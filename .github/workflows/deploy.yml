@@ -1,0 +1,161 @@
+# 알작딱 최소 배포 워크플로: OIDC 로그인 -> 번들(zip) 만들기 -> S3 업로드 -> CodeDeploy 배포 3개 -> 성공까지 대기
+#
+# 필요한 repo variables (Settings > Secrets and variables > Actions > Variables). 비밀이 아니라 이름/ARN 이다.
+#   AWS_ROLE_ARN      arn:aws:iam::866477832211:role/lc-github-oidc-role
+#   AWS_REGION        ap-northeast-2
+#   DEPLOY_BUCKET     lc-deploy-866477832211
+#   ASSETS_BUCKET     lc-assets-866477832211
+#   CD_APPLICATION    lc-app
+#   CD_GROUP_WEB      lc-web
+#   CD_GROUP_QUEUE    lc-queue
+#   CD_GROUP_SCHEDULER lc-scheduler
+# 장기 액세스 키는 쓰지 않는다 (secrets 에 AWS 키 없음). 역할의 신뢰 정책은 sub=repo:hohosungho/lc-cicd-test:ref:refs/heads/main.
+# 주의: job 에 `environment:` 를 붙이면 OIDC sub 가 repo:...:environment:<이름> 으로 바뀌어 위 신뢰 정책과 어긋난다.
+#       그래서 environment 를 쓰지 않는다 (쓰려면 역할 신뢰 정책의 sub 도 같이 바꿔야 한다).
+#
+# [zip 레이아웃 — appspec.yml 은 zip 루트]
+#   bundle.zip
+#   ├── appspec.yml
+#   ├── scripts/*.sh        (실행 비트 유지)
+#   ├── ami/                (골든 AMI 굽기 전 정리 스크립트를 서버에서 꺼내 쓰려고 포함)
+#   ├── public/ src/ bin/   (앱: app/ 의 내용이 루트로 올라온다. composer 를 쓰면 vendor/ 포함)
+#   ├── REVISION            (SHA / VERSION / TAG / BUILT_AT)
+#   └── FAULT               (FAULT / FAULT_TARGET — workflow_dispatch 입력값, push 에서는 none/all)
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', '**.md', '.agents/**']
+  workflow_dispatch:
+    inputs:
+      fault:
+        description: '고장 스위치 (scripts/README.md 참고). 정상 배포는 none'
+        type: choice
+        default: none
+        options: [none, up500, before_install_fail, after_install_fail, start_fail, validate_fail, stop_fail]
+      fault_target:
+        description: '고장 대상: all | instance:i-aaa,i-bbb | az:ap-northeast-2c | ssm'
+        type: string
+        default: all
+      release_tag:
+        description: '화면에 표시할 태그 (비우면 브랜치 이름)'
+        type: string
+        default: ''
+
+permissions:
+  id-token: write # OIDC 토큰 발급
+  contents: read
+
+# 같은 그룹에 배포가 겹치면 CodeDeploy 가 거부하므로 워크플로 단계에서 직렬화한다. 진행 중인 배포를 취소하지 않는다.
+concurrency:
+  group: lc-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # 앱이 composer 를 쓸 때만 (현재 최소 PHP 앱은 composer.json 이 없어 건너뜀)
+      - name: composer install
+        if: ${{ hashFiles('app/composer.json') != '' }}
+        run: composer install --no-dev --optimize-autoloader --no-interaction --working-dir=app
+
+      # 정적 자산이 있을 때만. --delete 금지: 롤링 배포 중 옛 서버가 옛 해시 파일을 아직 요구한다.
+      - name: sync static assets (no --delete)
+        if: ${{ hashFiles('app/public/build/**') != '' }}
+        env:
+          ASSETS_BUCKET: ${{ vars.ASSETS_BUCKET }}
+        run: aws s3 sync app/public/build "s3://${ASSETS_BUCKET}/build/" --only-show-errors
+
+      - name: build bundle
+        env: # 입력값은 expression 을 셸에 직접 넣지 않고 환경변수로 받아 검증한다 (스크립트 주입 방지)
+          FAULT_IN: ${{ inputs.fault }}
+          FAULT_TARGET_IN: ${{ inputs.fault_target }}
+          TAG_IN: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          FAULT="${FAULT_IN:-none}"
+          TARGET="${FAULT_TARGET_IN:-all}"
+          TAG="${TAG_IN:-$GITHUB_REF_NAME}"
+          case "$FAULT" in
+            none|up500|before_install_fail|after_install_fail|start_fail|validate_fail|stop_fail) ;;
+            *) echo "알 수 없는 fault: $FAULT" >&2; exit 1 ;;
+          esac
+          [[ "$TARGET" =~ ^[A-Za-z0-9_:,.-]+$ ]] || { echo "fault_target 형식 오류" >&2; exit 1; }
+          [[ "$TAG" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "release_tag 형식 오류" >&2; exit 1; }
+
+          rm -rf build && mkdir -p build/bundle
+          cp -a app/. build/bundle/
+          cp appspec.yml build/bundle/
+          cp -a scripts build/bundle/scripts
+          cp -a ami build/bundle/ami
+          chmod +x build/bundle/scripts/*.sh build/bundle/ami/*.sh
+
+          printf 'SHA=%s\nVERSION=%s\nTAG=%s\nBUILT_AT=%s\n' \
+            "$GITHUB_SHA" "1.0.${GITHUB_RUN_NUMBER}" "$TAG" "$(date -u +%FT%TZ)" > build/bundle/REVISION
+          printf 'FAULT=%s\nFAULT_TARGET=%s\n' "$FAULT" "$TARGET" > build/bundle/FAULT
+          cat build/bundle/REVISION build/bundle/FAULT
+
+          # CRLF 가 섞이면 `#!/usr/bin/env bash\r` 때문에 훅이 실행되지 않는다
+          if grep -rIl $'\r' build/bundle/scripts build/bundle/ami build/bundle/appspec.yml; then
+            echo "CRLF 줄바꿈 발견 (LF 만 허용)" >&2; exit 1
+          fi
+
+          # -y: 심볼릭 링크 보존, 파일 권한(실행 비트)은 zip 에 그대로 저장된다. .git/node_modules/tests 제외.
+          (cd build/bundle && zip -qry ../bundle.zip . -x '.git/*' 'node_modules/*' 'tests/*')
+
+          # 훅 스크립트 실행 비트 확인 (없으면 CodeDeploy 에이전트가 스크립트를 실행하지 못한다)
+          unzip -Z build/bundle.zip 'scripts/*.sh'
+          bad="$(unzip -Z build/bundle.zip 'scripts/*.sh' | grep '\.sh$' | grep -v '^-rwx' || true)"
+          # (grep -q 는 pipefail 과 만나면 SIGPIPE 로 오탐할 수 있어 출력을 버리는 방식으로 쓴다)
+          [ -z "$bad" ] || { echo "실행 비트 없는 스크립트:"; echo "$bad"; exit 1; }
+          unzip -Z1 build/bundle.zip | grep -x 'appspec.yml' >/dev/null || { echo "appspec.yml 이 zip 루트에 없다" >&2; exit 1; }
+
+      - name: upload bundle to S3
+        env:
+          DEPLOY_BUCKET: ${{ vars.DEPLOY_BUCKET }}
+        run: aws s3 cp build/bundle.zip "s3://${DEPLOY_BUCKET}/deploy/${GITHUB_SHA}.zip" --only-show-errors
+
+      # 배포 그룹 3개에 같은 zip 을 보내고, 모두 성공할 때까지 기다린다 (하나라도 실패하면 워크플로 실패).
+      - name: create deployments and wait
+        env:
+          DEPLOY_BUCKET: ${{ vars.DEPLOY_BUCKET }}
+          CD_APPLICATION: ${{ vars.CD_APPLICATION }}
+          GROUPS_CSV: ${{ vars.CD_GROUP_WEB }},${{ vars.CD_GROUP_QUEUE }},${{ vars.CD_GROUP_SCHEDULER }}
+        run: |
+          set -euo pipefail
+          ids=()
+          IFS=',' read -r -a groups <<< "$GROUPS_CSV"
+          for g in "${groups[@]}"; do
+            id="$(aws deploy create-deployment \
+              --application-name "$CD_APPLICATION" \
+              --deployment-group-name "$g" \
+              --s3-location "bucket=${DEPLOY_BUCKET},key=deploy/${GITHUB_SHA}.zip,bundleType=zip" \
+              --file-exists-behavior OVERWRITE \
+              --description "$GITHUB_SHA" \
+              --query deploymentId --output text)"
+            echo "$g -> $id"
+            echo "- \`$g\`: $id" >> "$GITHUB_STEP_SUMMARY"
+            ids+=("$id")
+          done
+
+          rc=0
+          for id in "${ids[@]}"; do
+            # 기본 폴링 15초 x 120회 = 30분까지 대기
+            if ! aws deploy wait deployment-successful --deployment-id "$id"; then
+              rc=1
+              echo "::error::배포 실패: $id"
+              aws deploy get-deployment --deployment-id "$id" \
+                --query 'deploymentInfo.{status:status,error:errorInformation,rollback:rollbackInfo}' --output json || true
+            fi
+          done
+          exit "$rc"

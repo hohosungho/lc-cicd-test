@@ -1,0 +1,68 @@
+# =============================================================================
+# CodeDeploy AppSpec (EC2/온프레미스, in-place). 같은 zip 을 lc-web / lc-queue / lc-scheduler
+# 3개 배포 그룹에 쓴다. 역할 분기는 훅이 DEPLOYMENT_GROUP_NAME 환경변수로 한다 (scripts/lib.sh).
+#
+# [위치 규칙]  이 파일은 zip 의 "루트"에 둔다 (표준 위치. 이 데모의 모든 경로가 zip 루트 기준이다).
+#   zip 루트
+#   ├── appspec.yml
+#   ├── scripts/        <- 아래 hooks 의 location 은 zip 루트 기준 상대 경로
+#   ├── public/ src/ bin/   (앱)
+#   ├── REVISION        (SHA/VERSION/TAG/BUILT_AT; GitHub Actions 가 작성)
+#   └── FAULT           (고장 스위치; GitHub Actions 가 작성. 사용법은 scripts/README.md)
+#
+# [배포 한 번의 이벤트 순서 — 콘솔 "Deployment lifecycle events" 에 보이는 이름]
+#   (lc-web 만) BeforeBlockTraffic -> BlockTraffic -> AfterBlockTraffic   TG 에서 제외 + 연결 비우기(deregistration delay)
+#   ApplicationStop     ← 이전 성공 리비전의 stop.sh (첫 배포는 Skipped)
+#   DownloadBundle      ← 에이전트가 S3 zip 을 받아 deployment-archive 에 풀기 (훅 없음)
+#   BeforeInstall       ← scripts/before_install.sh
+#   Install             ← 에이전트가 files: 에 따라 /var/www/_incoming 으로 복사 (훅 없음)
+#   AfterInstall        ← scripts/after_install.sh  (.env 생성, releases/<id> 로 이동, current 교체)
+#   ApplicationStart    ← scripts/start.sh
+#   ValidateService     ← scripts/validate.sh
+#   (lc-web 만) BeforeAllowTraffic -> AllowTraffic -> AfterAllowTraffic   TG 재등록, healthy 가 될 때까지 대기
+#   * Block/AllowTraffic 계열은 appspec 에 쓰지 않는다. 배포 그룹에 TG 를 연결하면 CodeDeploy 가 자동 수행한다.
+#
+# [고장 재현] FAULT 파일 값 -> 실패하는 지점 (자세한 대상 지정은 scripts/README.md)
+#   before_install_fail  BeforeInstall 실패          after_install_fail  AfterInstall 실패(current 교체 전)
+#   start_fail           ApplicationStart 실패       validate_fail       ValidateService 실패
+#   stop_fail            이 리비전의 stop.sh 고장 -> "다음" 배포의 ApplicationStop 이 실패 (T4)
+#   up500                /up 이 500 (ValidateService 와 ALB 헬스체크가 실패)
+# =============================================================================
+version: 0.0
+os: linux
+
+# 설치 대상에 같은 이름의 파일이 이미 있어도 실패하지 않고 덮어쓴다.
+# (기본값 DISALLOW 이면 이전 배포 잔여물 때문에 Install 이 실패할 수 있다.)
+file_exists_behavior: OVERWRITE
+
+files:
+  # source: /  = zip 루트 전체. destination 은 "스테이징"이다. 실제 서비스 경로가 아니다.
+  # 훅(after_install.sh)이 /var/www/_incoming -> /var/www/releases/<DEPLOYMENT_ID> 로 옮기고
+  # /var/www/current 링크를 교체한다. CodeDeploy 가 "다음 배포 전에 이전에 설치한 파일"을 지우기 때문에
+  # 서비스 경로를 destination 으로 직접 쓰지 않는다.
+  - source: /
+    destination: /var/www/_incoming
+
+# 훅: location 은 zip 루트 기준 / timeout 은 초 / runas: root (nginx·php-fpm 제어와 /var/www 쓰기에 필요)
+# 훅 하나가 timeout 을 넘기면 그 이벤트가 실패한다. 스크립트 안의 재시도 시간은 timeout 보다 짧게 둔다.
+hooks:
+  ApplicationStop:
+    - location: scripts/stop.sh
+      timeout: 120
+      runas: root
+  BeforeInstall:
+    - location: scripts/before_install.sh
+      timeout: 60
+      runas: root
+  AfterInstall:
+    - location: scripts/after_install.sh
+      timeout: 300
+      runas: root
+  ApplicationStart:
+    - location: scripts/start.sh
+      timeout: 120
+      runas: root
+  ValidateService:
+    - location: scripts/validate.sh
+      timeout: 120
+      runas: root
