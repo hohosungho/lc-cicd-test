@@ -23,3 +23,4 @@ GitHub Actions + CodeDeploy(in-place) + ALB + ASG 구성에서 배포가 어떻�
 | DB/Redis 없음, `.env` 고정 내용 | RDS(Multi-AZ), ElastiCache, SSM SecureString 으로 `.env` 생성 |
 | 최소 PHP 앱 | Laravel (composer, 마이그레이션, 큐/스케줄러) |
 | 기본 암호화 | 고객 관리형 KMS |
+| CodeDeploy 에이전트 1.8.1 (계정의 SSM association 이 설치) | 2.x (Ubuntu 24.04 공식 지원) |

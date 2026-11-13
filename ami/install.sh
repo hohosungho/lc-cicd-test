@@ -30,6 +30,17 @@
 # =============================================================================
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
+# apt/dpkg 잠금 대기: 부팅 직후 다른 프로세스(unattended-upgrades, SSM association 의 에이전트 설치 등)가
+# 잠금을 잡고 있으면 apt-get 이 즉시 실패해 set -e 로 스크립트가 중단된다(실제로 발생). 잠금이 풀릴 때까지 기다린다.
+apt-get() { command apt-get -o DPkg::Lock::Timeout=600 "$@"; }
+wait_apt() { # 최대 약 10분. fuser 가 없으면 바로 통과
+  local i
+  for i in $(seq 1 120); do
+    fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1 || return 0
+    sleep 5
+  done
+  echo "경고: apt 잠금 대기 시간 초과"
+}
 
 REGION="${AWS_REGION:-ap-northeast-2}"
 PHP_V="${PHP_V:-8.4}"
@@ -45,11 +56,13 @@ echo "=== lc install 시작 $(date -Is) region=$REGION php=$PHP_V ==="
 [ "${ID:-}" = ubuntu ] && [ "${VERSION_ID:-}" = "24.04" ] || echo "경고: Ubuntu 24.04 가 아니다 (${PRETTY_NAME:-?}). 계속 진행"
 
 # --- 1) 기본 패키지 ---------------------------------------------------------------
+wait_apt
 apt-get update -y
 apt-get install -y ca-certificates curl wget unzip jq cron gnupg software-properties-common nginx supervisor
 
 # --- 2) PHP 8.4 (ondrej/php PPA) ----------------------------------------------------
 if ! dpkg -s "php${PHP_V}-fpm" >/dev/null 2>&1; then
+  wait_apt
   add-apt-repository -y ppa:ondrej/php
   apt-get update -y
 fi
