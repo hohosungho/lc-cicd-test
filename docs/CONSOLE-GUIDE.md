@@ -140,7 +140,10 @@ Settings > Secrets and variables > Actions > **Variables**:
 
 ## 10. 골든 AMI
 `ami/README.md` 4~6번 절: 정리 스크립트(`pre-bake-cleanup.sh --yes`) 실행 → 이미지 생성 `lc-web-golden-<yyyymmdd>` (재부팅 안 함 체크 해제) → 사용자 데이터 없이 확인용 인스턴스 하나 띄워 검증 후 종료.
-- **정리 스크립트 실행 후 단독 Web 인스턴스는 에이전트가 멈춘다.** 이후 이 인스턴스로 배포하려면 `sudo systemctl start codedeploy-agent` 가 필요하다.
+- **정리 스크립트 직후 단독 Web 의 에이전트는 멈춰 있지만, 비활성화(disable)되지는 않는다(enabled 유지).** 그래서 이미지 생성 방식에 따라 다르다.
+  - 재부팅하는 기본값(재부팅 안 함 체크 해제): 스냅샷 후 원본 인스턴스가 재부팅하면서 에이전트가 **자동으로 다시 시작**한다. cloud-init 이 첫 부팅 상태라 사용자 데이터(`install.sh`)도 다시 실행된다. 단 앱 코드와 `.env` 는 지워져 있어 `/var/www/current` 가 없으므로 `/up` 이 404 이고 TG 에서 unhealthy 가 된다. 다시 서비스하려면 재배포가 필요하다.
+  - `--no-reboot`/재부팅 안 함 체크: 에이전트가 멈춘 채로 남는다. 배포 대상으로 쓰려면 `sudo systemctl start codedeploy-agent`.
+  - AMI 에 들어가는 에이전트는 "멈춘 상태 + enabled" 이므로, 이 AMI 로 띄운 새 인스턴스에서는 부팅 때 자동 시작한다.
 
 ## 11. ASG (EC2 > Auto Scaling 그룹) — 순서 지킴
 1. **시작 템플릿 `lc-web-lt`**: AMI = 골든 AMI, t3.small, IAM 프로파일 `lc-ec2-profile`, 메타데이터 IMDSv2 필수·홉 2, 스토리지 암호화, 사용자 데이터 **없음**, 태그(인스턴스) `Name=lcamtest-web` + 공통 3태그.

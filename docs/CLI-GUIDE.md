@@ -232,7 +232,7 @@ AMI_ID=$(aws ec2 create-image --instance-id $WEB_ID --name lc-web-golden-$(date 
 aws ec2 wait image-available --image-ids $AMI_ID
 ```
 `create-image` 는 기본값이 "재부팅함" 이다(`--no-reboot` 를 붙이지 않는다). 굽기 검증은 `ami/README.md` 6번 절: 사용자 데이터 없이 AMI 로 확인용 인스턴스를 띄워 서비스 상태를 보고 종료한다.
-정리 스크립트 실행 후 단독 Web 의 에이전트는 멈춰 있다. 계속 배포 대상으로 쓰려면 `sudo systemctl start codedeploy-agent`.
+정리 스크립트는 에이전트를 멈추지만 enabled 는 그대로 둔다. `create-image` 기본값(재부팅함)이면 스냅샷 후 원본 인스턴스가 재부팅되면서 에이전트가 자동으로 다시 시작되고, cloud-init 첫 부팅 상태라 `install.sh` 도 다시 실행된다(앱 코드는 지워져 있어 `/up` 이 404, TG 에서 unhealthy → 재배포 필요). `--no-reboot` 로 만들었다면 에이전트가 멈춘 채라 `sudo systemctl start codedeploy-agent` 가 필요하다. AMI 로 띄운 새 인스턴스는 부팅 때 에이전트가 자동 시작한다.
 
 ## 12. ASG (수동 모드부터)
 ```bash
