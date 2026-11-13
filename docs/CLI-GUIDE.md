@@ -38,7 +38,7 @@ aws ec2 create-vpc-endpoint --vpc-id $VPC --vpc-endpoint-type Gateway --service-
 ```
 NAT 게이트웨이는 만들지 않는다. 확인: `aws ec2 describe-route-tables --route-table-ids $RT --query 'RouteTables[0].Routes'` 에 `0.0.0.0/0 → igw-…` 와 S3 엔드포인트 경로가 있다.
 
-## 2. S3
+## 2. S3 ★
 ```bash
 B=lc-deploy-$ACCOUNT
 aws s3api create-bucket --bucket $B --create-bucket-configuration LocationConstraint=ap-northeast-2
@@ -63,18 +63,19 @@ cat > ec2-inline.json <<EOF
  {"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket"],"Resource":["arn:aws:s3:::aws-codedeploy-ap-northeast-2","arn:aws:s3:::aws-codedeploy-ap-northeast-2/*"]}
 ]}
 EOF
-IT='Key=Project,Value=lcamtest Key=Owner,Value=sungho Key=Ephemeral,Value=true'
+IT=(Key=Project,Value=lcamtest Key=Owner,Value=sungho Key=Ephemeral,Value=true)   # 배열: bash/zsh 모두 --tags "${IT[@]}" 로 쓴다
 # 인스턴스 역할 + 프로파일
-aws iam create-role --role-name lc-ec2-role --assume-role-policy-document file://ec2-trust.json --tags $IT >/dev/null
+aws iam create-role --role-name lc-ec2-role --assume-role-policy-document file://ec2-trust.json --tags "${IT[@]}" >/dev/null
 aws iam attach-role-policy --role-name lc-ec2-role --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
 aws iam put-role-policy --role-name lc-ec2-role --policy-name lc-ec2-inline --policy-document file://ec2-inline.json
-aws iam create-instance-profile --instance-profile-name lc-ec2-profile --tags $IT >/dev/null
+aws iam create-instance-profile --instance-profile-name lc-ec2-profile --tags "${IT[@]}" >/dev/null
 aws iam add-role-to-instance-profile --instance-profile-name lc-ec2-profile --role-name lc-ec2-role
 # CodeDeploy 서비스 역할
-CD_ROLE_ARN=$(aws iam create-role --role-name lc-codedeploy-role --assume-role-policy-document file://cd-trust.json --tags $IT --query Role.Arn --output text)
+CD_ROLE_ARN=$(aws iam create-role --role-name lc-codedeploy-role --assume-role-policy-document file://cd-trust.json --tags "${IT[@]}" --query Role.Arn --output text)
 aws iam attach-role-policy --role-name lc-codedeploy-role --policy-arn arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
 # GitHub OIDC 공급자 + 역할
-aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com --client-id-list sts.amazonaws.com >/dev/null
+# 이미 있으면 'EntityAlreadyExists' 에러가 나는데, 그대로 두고 넘어가면 된다(계정에 공급자는 URL 당 하나만 만들 수 있다)
+aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com --client-id-list sts.amazonaws.com >/dev/null || true
 cat > gh-trust.json <<EOF
 {"Version":"2012-10-17","Statement":[{"Effect":"Allow",
  "Principal":{"Federated":"arn:aws:iam::$ACCOUNT:oidc-provider/token.actions.githubusercontent.com"},
@@ -91,7 +92,7 @@ cat > gh-inline.json <<EOF
  {"Effect":"Allow","Action":["codedeploy:CreateDeployment","codedeploy:GetDeployment","codedeploy:GetDeploymentConfig","codedeploy:GetApplicationRevision","codedeploy:RegisterApplicationRevision"],"Resource":"*"}
 ]}
 EOF
-GH_ROLE_ARN=$(aws iam create-role --role-name lc-github-oidc-role --assume-role-policy-document file://gh-trust.json --tags $IT --query Role.Arn --output text)
+GH_ROLE_ARN=$(aws iam create-role --role-name lc-github-oidc-role --assume-role-policy-document file://gh-trust.json --tags "${IT[@]}" --query Role.Arn --output text)
 aws iam put-role-policy --role-name lc-github-oidc-role --policy-name lc-github-deploy --policy-document file://gh-inline.json
 cd - >/dev/null; echo "$CD_ROLE_ARN"; echo "$GH_ROLE_ARN"
 ```
