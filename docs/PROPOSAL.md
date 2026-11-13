@@ -20,7 +20,7 @@
 GitHub Actions ──OIDC──▶ IAM role ──▶ S3 deploy 버킷 (deploy/<sha>.zip)
                                    └▶ CodeDeploy create-deployment ─┐
                                                                     ▼
- 내 IP(211.212.235.69/32) ─▶ ALB(80) ─▶ TG(lc-tg-web, /up)    CodeDeploy 서비스
+ 내 IP(<MY_IP>/32) ─▶ ALB(80) ─▶ TG(lc-tg-web, /up)    CodeDeploy 서비스
                                           │  ▲ 제외/재등록           │ (에이전트가 폴링)
                           ┌───────────────┴──┴──────────┐            ▼
                           │ Web ASG (min0/desired0/max3)│◀── 배포 그룹 lc-web-dg
@@ -310,7 +310,7 @@ FAULT_TARGET=all | instance:i-0abc... | az:ap-northeast-2c
 - **VPC `lc-vpc` 10.30.0.0/16**을 새로 만든다. 계정에는 기본 VPC(172.31.0.0/16)와 10.100.0.0/16, 10.200.0.0/16 VPC가 이미 있다. 이들은 건드리지 않고 겹치지 않는 대역을 쓴다.
 - **public 서브넷 2개만** 둔다: 2a `10.30.1.0/24`, 2c `10.30.2.0/24`. NAT가 없고 모든 인스턴스가 퍼블릭 IP를 쓰는 구성이라 private 서브넷은 쓸 곳이 없다. 요구사항 §3의 "public/private 각 2"는 [변경] 범위 때문에 public 2개로 줄이고, README의 "고객 운영 환경과의 차이"에 적는다. 라우트 테이블 1개(`0.0.0.0/0 → IGW`), S3 게이트웨이 엔드포인트(무료)를 붙인다.
 - **보안 그룹**
-  - `lc-alb-sg`: 인바운드 80/tcp, 소스 `211.212.235.69/32`만. 아웃바운드는 `lc-ec2-sg`의 80으로만.
+  - `lc-alb-sg`: 인바운드 80/tcp, 소스 `<MY_IP>/32`만. 아웃바운드는 `lc-ec2-sg`의 80으로만.
   - `lc-ec2-sg`(Web·Queue·Scheduler 공용): 인바운드 80/tcp, 소스 `lc-alb-sg`만. SSH 없음. 아웃바운드는 전체 허용(443 SSM·S3·CodeDeploy, 80 apt). 퍼블릭 IP가 있어도 인바운드는 ALB SG 외에 열리지 않는다.
   - 인터넷 노출은 ALB(내 IP만)뿐이다. HTTPS 인증서는 쓰지 않으므로(HTTP 80) README의 차이 목록에 적는다.
 - **Launch Template의 `associate_public_ip_address`**: NAT가 없으므로 ASG 인스턴스도 퍼블릭 IP가 있어야 SSM 에이전트·CodeDeploy 에이전트·S3(CodeDeploy 에이전트 버킷)에 닿는다. Launch Template에서 네트워크 인터페이스를 정의하면 서브넷의 auto-assign 설정을 덮어쓰고, 이때 보안 그룹은 인터페이스 안에 지정해야 한다(템플릿 상위의 SG와 동시 지정 불가). 문서: [Create a launch template for an Auto Scaling group](https://docs.aws.amazon.com/autoscaling/ec2/userguide/create-launch-template.html). 서브넷 설정(`MapPublicIpOnLaunch`)과 Launch Template(`DeviceIndex=0, AssociatePublicIpAddress=true, Groups=[lc-ec2-sg]`)에 **모두 명시**한다. 단독 인스턴스도 같은 값으로 띄운다. 첫 ASG 인스턴스에서 퍼블릭 IP·SSM 연결 여부를 확인해 기록한다.
