@@ -63,6 +63,8 @@ $tail = substr($imds['instance_id'], -4);
   h1 { font-size:88px; margin:0 0 8px; letter-spacing:2px; }
   .row { font-size:44px; margin:6px 0; }
   .row b { opacity:.7; font-weight:400; font-size:24px; display:inline-block; min-width:170px; }
+  .letter { margin:20px 0 8px; padding:16px 20px; background:#0003; border-left:6px solid #fff; font-size:30px; line-height:1.5; }
+  .letter b { opacity:.7; font-weight:400; font-size:24px; display:block; margin-bottom:4px; }
   .sm { font-size:16px; opacity:.8; word-break:break-all; }
   .fault { background:#c00; padding:10px 16px; margin-bottom:16px; font-size:28px; font-weight:700; }
   #strip { margin-top:24px; display:flex; flex-wrap:wrap; gap:4px; }
@@ -80,6 +82,7 @@ $tail = substr($imds['instance_id'], -4);
   <div class="row"><b>AZ</b><?= lc_h($imds['az']) ?></div>
   <div class="row"><b>server time</b><?= lc_h(date('Y-m-d H:i:s T')) ?></div>
   <div class="row"><b>role (group)</b><?= lc_h($dep['role']) ?></div>
+  <div class="letter"><b>letter</b>성호님, 직접 만든 CI/CD 파이프라인이 처음부터 끝까지 이어졌습니다. GitHub push 한 번이 S3와 CodeDeploy를 지나 이 화면까지 왔습니다. 수고 많으셨어요!</div>
   <p class="sm">release sha: <?= lc_h($rev['sha']) ?><br>
      deployment: <?= lc_h($dep['deployment_id']) ?> / deployed <?= lc_h($dep['deployed_at']) ?> / built <?= lc_h($rev['built_at']) ?><br>
      host: <?= lc_h((string) gethostname()) ?> / IMDS: <?= $imds['ok'] ? 'ok' : '실패(unknown 표시)' ?></p>
